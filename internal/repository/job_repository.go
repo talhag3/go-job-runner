@@ -1,9 +1,13 @@
 package repository
 
-import "github.com/talhag3/go-job-runner/internal/domain"
+import (
+	"context"
+
+	"github.com/talhag3/go-job-runner/internal/domain"
+)
 
 type JobRepository interface {
-	Create(job *domain.Job) error
-	GetByID(id int64) (*domain.Job, error)
-	GetAll() ([]*domain.Job, error)
+	Create(ctx context.Context, job *domain.Job) error
+	GetByID(ctx context.Context, id int64) (*domain.Job, error)
+	GetAll(ctx context.Context) ([]*domain.Job, error)
 }
