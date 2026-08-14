@@ -17,41 +17,45 @@ import (
 )
 
 func main() {
-	// ------------------------------------------------
-	// Application context
-	// ------------------------------------------------
-
+	// Application context.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// ------------------------------------------------
-	// Dependencies
-	// ------------------------------------------------
+	// --------------------------------------------------
+	// Repository
+	// --------------------------------------------------
 
 	jobRepository := repository.NewMemoryJobRepository()
 
+	// --------------------------------------------------
+	// Executor
+	// --------------------------------------------------
+
 	jobExecutor := executor.NewDefaultExecutor()
+
+	// --------------------------------------------------
+	// Worker Pool
+	// --------------------------------------------------
 
 	workerPool := worker.NewWorkerPool(
 		100,
 		jobExecutor,
 	)
 
-	// Start 3 workers.
 	workerPool.Start(ctx, 3)
 
-	// ------------------------------------------------
+	// --------------------------------------------------
 	// Service
-	// ------------------------------------------------
+	// --------------------------------------------------
 
 	jobService := service.NewJobService(
 		jobRepository,
 		workerPool,
 	)
 
-	// ------------------------------------------------
+	// --------------------------------------------------
 	// HTTP Handler
-	// ------------------------------------------------
+	// --------------------------------------------------
 
 	jobHandler := handler.NewJobHandler(jobService)
 
@@ -61,27 +65,28 @@ func main() {
 	mux.HandleFunc("GET /jobs", jobHandler.GetAll)
 	mux.HandleFunc("GET /jobs/{id}", jobHandler.GetByID)
 
+	// --------------------------------------------------
+	// HTTP Server
+	// --------------------------------------------------
+
 	server := &http.Server{
 		Addr:    ":8080",
 		Handler: mux,
 	}
 
-	// ------------------------------------------------
-	// Start HTTP server
-	// ------------------------------------------------
-
+	// Start HTTP server in its own goroutine.
 	go func() {
-		fmt.Println("Server running on :8080")
+		fmt.Println("HTTP server running on http://localhost:8080")
 
 		if err := server.ListenAndServe(); err != nil &&
 			err != http.ErrServerClosed {
-			fmt.Printf("server error: %v\n", err)
+			fmt.Printf("HTTP server error: %v\n", err)
 		}
 	}()
 
-	// ------------------------------------------------
+	// --------------------------------------------------
 	// OS Signals
-	// ------------------------------------------------
+	// --------------------------------------------------
 
 	signalChan := make(chan os.Signal, 1)
 
@@ -91,36 +96,41 @@ func main() {
 		syscall.SIGTERM,
 	)
 
+	fmt.Println("Job worker pool started with 3 workers.")
+	fmt.Println("Press CTRL+C to shutdown.")
+
 	// Wait for CTRL+C.
 	<-signalChan
 
-	fmt.Println("\nShutdown signal received")
+	fmt.Println("\nShutdown signal received.")
 
-	// ------------------------------------------------
-	// Stop accepting new work
-	// ------------------------------------------------
+	// --------------------------------------------------
+	// Cancel workers
+	// --------------------------------------------------
 
 	cancel()
 
-	// ------------------------------------------------
+	// --------------------------------------------------
 	// Shutdown HTTP server
-	// ------------------------------------------------
+	// --------------------------------------------------
 
-	shutdownCtx, shutdownCancel :=
-		context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(
+		context.Background(),
+		5*time.Second,
+	)
 
 	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		fmt.Printf("server shutdown error: %v\n", err)
+		fmt.Printf("HTTP server shutdown error: %v\n", err)
 	}
 
-	// ------------------------------------------------
+	// --------------------------------------------------
 	// Wait for workers
-	// ------------------------------------------------
+	// --------------------------------------------------
 
 	workerPool.Wait()
 
-	fmt.Println("All workers stopped")
-	fmt.Println("Application stopped")
+	fmt.Println("All workers stopped.")
+	fmt.Println("Application stopped.")
 }

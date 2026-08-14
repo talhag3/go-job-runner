@@ -15,10 +15,10 @@ type WorkerPool struct {
 	wg       sync.WaitGroup
 }
 
-func NewWorkerPool(queueSize int, executor executor.JobExecutor) *WorkerPool {
+func NewWorkerPool(queueSize int, jobExecutor executor.JobExecutor) *WorkerPool {
 	return &WorkerPool{
 		jobs:     make(chan *domain.Job, queueSize),
-		executor: executor,
+		executor: jobExecutor,
 	}
 }
 
@@ -45,24 +45,31 @@ func (p *WorkerPool) worker(ctx context.Context, id int) {
 
 	for {
 		select {
-		case job := <-p.jobs:
-			fmt.Printf(
-				"Worker %d received Job %d\n",
-				id,
-				job.ID,
-			)
 
-			if err := p.executor.Execute(ctx, job); err != nil {
-				fmt.Printf(
-					"Worker %d failed Job %d: %v\n",
-					id,
-					job.ID,
-					err,
-				)
+		case job := <-p.jobs:
+
+			if job == nil {
+				return
 			}
 
+			fmt.Printf("Worker [%d] received Job [%d]\n", id, job.ID)
+
+			job.MarkProcessing()
+
+			err := p.executor.Execute(ctx, job)
+
+			if err != nil {
+				job.MarkFailed()
+				fmt.Printf("Worker [%d] Job [%d] failed: %v\n", id, job.ID, err)
+				continue
+			}
+
+			job.MarkCompleted()
+
+			fmt.Printf("Worker [%d] Job [%d] completed\n", id, job.ID)
+
 		case <-ctx.Done():
-			fmt.Printf("Worker %d stopping\n", id)
+			fmt.Printf("Worker [%d] stopping\n", id)
 			return
 		}
 	}
